@@ -5,12 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\Book;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
 
 class BookController extends Controller
 {
     public function index()
     {
-        $books = Book::all();
+        $books = Book::paginate(15);
         return response()->json([
             'data' => $books,
             'links' => [
@@ -32,15 +33,13 @@ class BookController extends Controller
             return response()->json(['error' => 'Book not found'], 404);
         }
 
-        // SECURE
-        // $user = $book->user()->first();
-
-        // $userFiltered['name'] = $user->name;
-        // $userFiltered['email'] = $user->email;
+        $user = $book->user()->first();
+        $userFiltered['name'] = $user->name;
+        $userFiltered['email'] = $user->email;
 
         return response()->json([
             'data' => $book,
-            //'user' => $userFiltered,
+            'user' => $userFiltered,
             'links' => [
                 'self' => [
                     'href' => url("/api/books/{$id}"),
@@ -64,9 +63,20 @@ class BookController extends Controller
 
     public function store(Request $request)
     {
-        // UNSECURE
-        // Missing Validation
-        $book = Book::create($request->all());
+        $validator = Validator::make($request->all(), [
+            'title' => 'required|string|max:255',
+            'author' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'published_year' => 'nullable|integer|min:1000|max:' . date('Y'),
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()], 422);
+        }
+
+        $bookData = $request->only(['title', 'author', 'description', 'published_year']);
+        $bookData['user_id'] = Auth::id();
+        $book = Book::create($bookData);
 
         return response()->json([
             'data' => $book,
@@ -99,18 +109,25 @@ class BookController extends Controller
             return response()->json(['error' => 'Book not found'], 404);
         }
 
-        // SECURE
-        // if(!$user = Auth::user()){
-        //     return response()->json(['error' => 'Not autorised'], 401);
-        // }
-        // if($user->id != $book->user_id){
-        //     return response()->json(['error' => 'Not autorised'], 401);
-        // }
+        if(!$user = Auth::user()){
+            return response()->json(['error' => 'Not autorised'], 401);
+        }
+        if($user->id != $book->user_id){
+            return response()->json(['error' => 'Not autorised'], 401);
+        }
 
-        // UNSECURE
-        // Missing Validation
-        // Missing Authorization Check
-        $book->update($request->all());
+        $validator = Validator::make($request->all(), [
+            'title' => 'sometimes|required|string|max:255',
+            'author' => 'sometimes|required|string|max:255',
+            'description' => 'nullable|string',
+            'published_year' => 'nullable|integer|min:1000|max:' . date('Y'),
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => $validator->errors()], 422);
+        }
+
+        $book->update($request->only(['title', 'author', 'description', 'published_year']));
 
         return response()->json([
             'data' => $book,
@@ -138,15 +155,14 @@ class BookController extends Controller
         if (!$book) {
             return response()->json(['error' => 'Book not found'], 404);
         }
-        // SECURE
-        // if(!$user = Auth::user()){
-        //     return response()->json(['error' => 'Not autorised'], 401);
-        // }
-        // if($user->id != $book->user_id){
-        //     return response()->json(['error' => 'Not autorised'], 401);
-        // }
 
-        // UNSECURE
+        if(!$user = Auth::user()){
+            return response()->json(['error' => 'Not autorised'], 401);
+        }
+        if($user->id != $book->user_id){
+            return response()->json(['error' => 'Not autorised'], 401);
+        }
+
         $book->delete();
 
         return response()->json([
@@ -159,6 +175,22 @@ class BookController extends Controller
                 'create' => [
                     'href' => url('/api/books'),
                     'method' => 'POST'
+                ]
+            ]
+        ]);
+    }
+
+    public function showByUser()
+    {
+        $user = Auth::user();
+        $books = Book::where('user_id', $user->id)->paginate(15);
+
+        return response()->json([
+            'data' => $books,
+            'links' => [
+                'self' => [
+                    'href' => url('/api/user/books'),
+                    'method' => 'GET'
                 ]
             ]
         ]);
